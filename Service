@@ -1,0 +1,203 @@
+using Microsoft.AspNetCore.Mvc;
+using onlinekyc.Models;
+using onlinekyc.Services;
+using System.Threading.Tasks;
+using System.Text;
+
+namespace onlinekyc.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class UserController : ControllerBase
+    {
+        private readonly IUserService _userService;
+
+        public UserController(IUserService userService)
+        {
+            _userService = userService;
+        }
+
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(UserRegisterDto userRegisterDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = new User
+            {
+                Username = userRegisterDto.Username,
+                PasswordHash = Encoding.UTF8.GetBytes(userRegisterDto.Password), // Simplified for example
+                Role = "Customer"
+            };
+
+            var result = await _userService.RegisterUserAsync(user);
+            if (!result)
+                return BadRequest("User registration failed");
+
+            return Ok("User registered successfully");
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login(UserLoginDto userLoginDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var validUser = await _userService.ValidateUserCredentialsAsync(userLoginDto.Username, userLoginDto.Password);
+            if (!validUser)
+                return Unauthorized("Invalid credentials");
+
+            var token = await _userService.GenerateJwtTokenAsync(userLoginDto.Username);
+            return Ok(new { Token = token });
+        }
+    }
+}
+
+using onlinekyc.Data;
+using onlinekyc.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+
+namespace onlinekyc.Services
+{
+    public class UserService : IUserService
+    {
+        private readonly KYCContext _context;
+        private readonly IConfiguration _configuration;
+
+        public UserService(KYCContext context, IConfiguration configuration)
+        {
+            _context = context;
+            _configuration = configuration;
+        }
+
+        public async Task<bool> ValidateUserCredentialsAsync(string username, string password)
+        {
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+            if (user == null)
+                return false;
+
+            var passwordHash = Encoding.UTF8.GetBytes(password); // Simplified for example
+            return user.PasswordHash.SequenceEqual(passwordHash);
+        }
+
+        public async Task<string> GenerateJwtTokenAsync(string username)
+        {
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new Claim[]
+                {
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Role, user.Role)
+                }),
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(_configuration["Jwt:ExpireMinutes"])),
+                Issuer = _configuration["Jwt:Issuer"],
+                Audience = _configuration["Jwt:Audience"],
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
+        }
+
+        public async Task<bool> RegisterUserAsync(User user)
+        {
+            await _context.Users.AddAsync(user);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+    }
+}
+
+using onlinekyc.Data;
+using onlinekyc.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+
+namespace onlinekyc.Services
+{
+    public class UserService : IUserService
+    {
+        private readonly KYCContext _context;
+        private readonly IConfiguration _configuration;
+
+        public UserService(KYCContext context, IConfiguration configuration)
+        {
+            _context = context;
+            _configuration = configuration;
+        }
+
+        public async Task<bool> ValidateUserCredentialsAsync(string username, string password)
+        {
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+            if (user == null)
+                return false;
+
+            var passwordHash = Encoding.UTF8.GetBytes(password); // Simplified for example
+            return user.PasswordHash.SequenceEqual(passwordHash);
+        }
+
+        public async Task<string> GenerateJwtTokenAsync(string username)
+        {
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new Claim[]
+                {
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Role, user.Role)
+                }),
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(_configuration["Jwt:ExpireMinutes"])),
+                Issuer = _configuration["Jwt:Issuer"],
+                Audience = _configuration["Jwt:Audience"],
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
+        }
+
+        public async Task<bool> RegisterUserAsync(User user)
+        {
+            await _context.Users.AddAsync(user);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+    }
+}
+
+namespace onlinekyc.Models
+{
+    public class UserRegisterDto
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
+    }
+}
+
+namespace onlinekyc.Models
+{
+    public class UserLoginDto
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
+    }
+}
+
+
+
