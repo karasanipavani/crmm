@@ -219,3 +219,73 @@ private string ComputeSha256Hash(string rawData)
         }
     }
 }
+
+
+using onlinekyc.Models;
+using System.Threading.Tasks;
+
+namespace onlinekyc.Services
+{
+    public interface IKycDetailsService
+    {
+        Task<bool> SubmitKycDetailsAsync(UserKycDetails userKycDetails);
+    }
+}
+
+using onlinekyc.Data;
+using onlinekyc.Models;
+using System.Threading.Tasks;
+
+namespace onlinekyc.Services
+{
+    public class KycDetailsService : IKycDetailsService
+    {
+        private readonly KYCContext _context;
+
+        public KycDetailsService(KYCContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<bool> SubmitKycDetailsAsync(UserKycDetails userKycDetails)
+        {
+            await _context.UserKycDetails.AddAsync(userKycDetails);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+    }
+}
+
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using onlinekyc.Models;
+using onlinekyc.Services;
+using System.Threading.Tasks;
+
+namespace onlinekyc.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class KycDetailsController : ControllerBase
+    {
+        private readonly IKycDetailsService _kycDetailsService;
+
+        public KycDetailsController(IKycDetailsService kycDetailsService)
+        {
+            _kycDetailsService = kycDetailsService;
+        }
+
+        [HttpPost("submit")]
+        [Authorize(Roles = "Customer")]
+        public async Task<IActionResult> SubmitKycDetails([FromBody] UserKycDetails userKycDetails)
+        {
+            var result = await _kycDetailsService.SubmitKycDetailsAsync(userKycDetails);
+            if (!result)
+            {
+                return BadRequest("KYC submission failed.");
+            }
+
+            return Ok("KYC details submitted successfully.");
+        }
+    }
+}
